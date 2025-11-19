@@ -8,3 +8,5 @@ my_server.py
 # Compilados de Python
 __pycache__/
 *.pyc
+
+req_bu.txt

@@ -6,7 +6,7 @@ Servidor principal que registra todas las herramientas MCP
 from fastmcp import FastMCP
 
 from azure_devops_config import AZURE_DEVOPS_ORG, AZURE_DEVOPS_PAT
-#from tools.repositories import register_repository_tools
+from tools.repositories import register_repository_tools
 from tools.work_items import register_work_item_tools
 from tools.projects import register_project_tools
 
@@ -17,7 +17,7 @@ mcp = FastMCP(
 )
 
 # Registrar tools desde los módulos
-#register_repository_tools(mcp)
+register_repository_tools(mcp)
 register_work_item_tools(mcp)
 register_project_tools(mcp)
 
