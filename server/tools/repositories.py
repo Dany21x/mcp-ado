@@ -233,150 +233,134 @@ def register_repository_tools(mcp: FastMCP) -> None:
     @mcp.tool()
     async def assign_reviewers_policies(
         project: str,
-        repository: str
+        repository: str,
+        branch: str,
+        reviewers: int
     ) -> str:
         """
-        Asigna politicas de reviewers en un repositorio de Azure DevOps.
-        
-        Args:
-            project: Nombre del proyecto en Azure DevOps
-            repository: Nombre del repositorio
-        
-        Returns:
-            Mensaje indicando el resultado de la operación
+        Asigna la política 'Minimum number of reviewers' en un repositorio Azure DevOps.
         """
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
-                headers = {"Authorization": get_auth_header()}
-                
+
+                headers = {
+                    "Authorization": get_auth_header(),
+                    "Content-Type": "application/json"
+                }
+
+                # ===== Obtener Project ID =====
                 projects_url = f"{get_base_url()}/_apis/projects?api-version={AZURE_DEVOPS_API_VERSION}"
                 projects_response = await client.get(projects_url, headers=headers)
                 projects_response.raise_for_status()
-                projects = projects_response.json()
-                
                 project_id = next(
-                    (p["id"] for p in projects.get("value", []) if p["name"] == project),
+                    (p["id"] for p in projects_response.json().get("value", []) if p["name"] == project),
                     None
                 )
-                
+
                 if not project_id:
                     return f"❌ Error: No se encontró el proyecto '{project}'."
-                
-                repos_url = f"{get_base_url()}/{project}/_apis/git/repositories?api-version={AZURE_DEVOPS_API_VERSION}"
+
+                # ===== Obtener Repository ID =====
+                repos_url = f"{get_base_url()}/_apis/git/repositories?api-version={AZURE_DEVOPS_API_VERSION}"
                 repos_response = await client.get(repos_url, headers=headers)
                 repos_response.raise_for_status()
-                repos = repos_response.json()
-                
                 repo_id = next(
-                    (r["id"] for r in repos.get("value", []) if r["name"] == repository),
+                    (r["id"] for r in repos_response.json().get("value", []) if r["name"] == repository),
                     None
                 )
-                
-                if not repo_id:
-                    return f"❌ Error: No se encontró el repositorio '{repository}' en el proyecto '{project}'."
 
-                policies_url = (
-                    f"{get_base_url()}/_apis/policy/configurations?api-version={AZURE_DEVOPS_API_VERSION}"
-                    f"&repositoryId={repo_id}&refName=refs/heads/master"
+                if not repo_id:
+                    return f"❌ Error: No se encontró el repositorio '{repository}'."
+
+                # ===== Obtener ID del tipo de política =====
+                policy_types_url = f"{get_base_url()}/_apis/policy/types?api-version={AZURE_DEVOPS_API_VERSION}"
+                policy_types = (await client.get(policy_types_url, headers=headers)).json()["value"]
+
+                reviewer_policy_type_id = next(
+                    (t["id"] for t in policy_types if t["displayName"] == "Minimum number of reviewers"),
+                    None
                 )
 
+                if not reviewer_policy_type_id:
+                    return "❌ No se pudo encontrar el tipo de política 'Minimum number of reviewers'."
+
+                # ===== Obtener políticas existentes =====
+                policies_url = (
+                    f"{get_base_url()}/_apis/policy/configurations?"
+                    f"api-version={AZURE_DEVOPS_API_VERSION}&repositoryId={repo_id}&refName=refs/heads/{branch}"
+                )
                 policies_response = await client.get(policies_url, headers=headers)
                 policies_response.raise_for_status()
-                policies = policies_response.json()
 
-                existing_policy_id = None
-                for p in policies.get("value", []):
-                    if p.get("type", {}).get("displayName") == "Minimum number of reviewers":
-                        existing_policy_id = p["id"]
+                existing_policy = next(
+                    (p for p in policies_response.json().get("value", [])
+                    if p.get("type", {}).get("id") == reviewer_policy_type_id),
+                    None
+                )
 
-                policy_types_url = f"{get_base_url()}/_apis/policy/types?api-version={AZURE_DEVOPS_API_VERSION}"
-                policy_types_response = await client.get(policy_types_url, headers=headers)
-                policy_types_response.raise_for_status()
-                policy_types = policy_types_response.json()["value"]
+                existing_policy_id = existing_policy["id"] if existing_policy else None                
 
-                reviewer_policy_type_id = None
-                for t in policy_types:
-                    if t.get("displayName") == "Minimum number of reviewers":
-                        reviewer_policy_type_id = t["id"]
-                        break
-
-                upsert_policy_url = f"{get_base_url()}/_apis/policy/configurations/{existing_policy_id}?api-version={AZURE_DEVOPS_API_VERSION}"
+                # ===== Crear o actualizar política =====
+                body = {
+                    "isEnabled": True,
+                    "isBlocking": True,
+                    "type": {"id": reviewer_policy_type_id},
+                    "settings": {
+                        "minimumApproverCount": reviewers,
+                        "creatorVoteCounts": False,
+                        "allowDownvotes": False,
+                        "scope": [
+                            {
+                                "refName": f"refs/heads/{branch}",
+                                "repositoryId": repo_id,
+                                "matchKind": "Exact"
+                            }
+                        ]
+                    }
+                }
 
                 if existing_policy_id:
+                    upsert_url = (
+                        f"{get_base_url()}/_apis/policy/configurations/"
+                        f"{existing_policy_id}?api-version={AZURE_DEVOPS_API_VERSION}"
+                    )
+                    upsert_response = await client.put(upsert_url, headers=headers, json=body)
 
-                    body = {
-                        "isEnabled": True,
-                        "isBlocking": True,
-                        "type": {
-                            "id": reviewer_policy_type_id
-                        },
-                        "settings": {
-                            "minimumApproverCount": 1,
-                            "creatorVoteCounts": False,
-                            "allowDownvotes": False,
-                            "scope": [
-                                {
-                                    "refName": "refs/heads/master",
-                                    "repositoryId": repo_id,
-                                    "matchKind": "Exact"
-                                }
-                            ]
-                        }
-                    }
-
-                    upsert_policy_response = await client.put(upsert_policy_url, headers=headers, json=body)
-                    
                 else:
+                    upsert_url = (
+                        f"{get_base_url()}/_apis/policy/configurations"
+                        f"?api-version={AZURE_DEVOPS_API_VERSION}"
+                    )
+                    upsert_response = await client.post(upsert_url, headers=headers, json=body)
 
-                    body = {
-                        "isEnabled": True,
-                        "isBlocking": True,
-                        "type": {
-                            "id": reviewer_policy_type_id
-                        },
-                        "settings": {
-                            "minimumApproverCount": 2,
-                            "creatorVoteCounts": False,
-                            "blockedBranches": [],
-                            "scope": [
-                                {
-                                    "refName": "refs/heads/master",
-                                    "repositoryId": repo_id,
-                                    "matchKind": "Exact"
-                                }
-                            ]
-                        }
-                    }
+                upsert_response.raise_for_status()
 
-                    upsert_policy_response = await client.post(upsert_policy_url, headers=headers, json=body)
-
-                upsert_policy_response.raise_for_status()
-                
-                # ===== Resultado exitoso =====
-                result = "✅ POLITICA ASIGNADA EXITOSAMENTE\n"
+                # ===== Resultado =====
+                result = "✅ POLÍTICA ASIGNADA EXITOSAMENTE\n"
                 result += "=" * 80 + "\n\n"
-                result += f"📦 Repositorio: {repository}\n"
                 result += f"📁 Proyecto: {project}\n"
-                result += f"🔐 Politica: Minimum number of reviewers\n"
+                result += f"📦 Repositorio: {repository}\n"
+                result += f"🔐 Política: Minimum number of reviewers\n"
                 result += f"🆔 Project ID: {project_id}\n"
                 result += f"🆔 Repo ID: {repo_id}\n"
-                result += "Esta política garantizará que un número mínimo de revisores hayan aprobado una solicitud de extracción antes de su finalización..\n"
-                
+
                 return result
-                
+
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 404:
-                return f"❌ Error 404: Recurso no encontrado. Verifica los nombres del proyecto y repositorio."
-            elif e.response.status_code == 401:
-                return "❌ Error de autenticación. Verifica tu Personal Access Token (PAT)."
-            elif e.response.status_code == 403:
-                return f"❌ Error 403: No tienes permisos para asignar permisos en este repositorio."
-            else:
-                return f"❌ Error HTTP {e.response.status_code}: {e.response.text}"
+                return "❌ 404: Recurso no encontrado."
+            if e.response.status_code == 401:
+                return "❌ 401: No autorizado. Verifica tu PAT."
+            if e.response.status_code == 403:
+                return "❌ 403: No tienes permisos."
+            return f"❌ Error HTTP {e.response.status_code}: {e.response.text}"
+
         except httpx.TimeoutException:
-            return "❌ Error: Tiempo de espera agotado al conectar con Azure DevOps."
+            return "❌ Error: Tiempo de espera agotado."
+
         except Exception as e:
             return f"❌ Error inesperado: {str(e)}"
+
 
     @mcp.tool()
     async def create_and_import(
@@ -388,94 +372,97 @@ def register_repository_tools(mcp: FastMCP) -> None:
         Crea e importa un repositorio de Azure DevOps.
         
         Args:
-            project: Nombre del proyecto en Azure DevOps
-            repository: Nombre del repositorio
-            repository_url_import: URL del repositorio a importar
+            project: Nombre del proyecto en Azure DevOps.
+            repository: Nombre del repositorio a crear.
+            repository_url_import: URL del repositorio Git origen (HTTP/HTTPS).
         
         Returns:
-            Mensaje indicando el resultado de la operación
+            Mensaje indicando el resultado de la operación.
         """
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
-             
+
                 headers = {
                     "Authorization": get_auth_header(),
                     "Content-Type": "application/json"
                 }
-                
+
+                # ===== 1. Buscar el proyecto =====
                 projects_url = f"{get_base_url()}/_apis/projects?api-version={AZURE_DEVOPS_API_VERSION}"
-                projects_response = await client.get(projects_url, headers=headers)
-                projects_response.raise_for_status()
-                projects = projects_response.json()
-                
-                project_id = next(
-                    (p["id"] for p in projects.get("value", []) if p["name"] == project),
-                    None
-                )
-                
+                resp = await client.get(projects_url, headers=headers)
+                resp.raise_for_status()
+
+                projects = resp.json().get("value", [])
+                project_id = next((p["id"] for p in projects if p["name"] == project), None)
+
                 if not project_id:
-                    return f"❌ Error: No se encontró el proyecto '{project}'."
-                
-                repos_url = f"{get_base_url()}/{project}/_apis/git/repositories?api-version={AZURE_DEVOPS_API_VERSION}"
-                repos_response = await client.get(repos_url, headers=headers)
-                repos_response.raise_for_status()
-                repos = repos_response.json()
-                
-                repo_id = next(
-                    (r["id"] for r in repos.get("value", []) if r["name"] == repository),
-                    None
-                )
-                
-                if repo_id:
-                    return f"❌ Error: Se encontró el repositorio '{repository}' ya existente en el proyecto '{project}'."
+                    return f"❌ Error: Proyecto '{project}' no encontrado."
 
-                body = {
-                    "name": repository
-                }
+                # ===== 2. Verificar si el repositorio ya existe =====
+                repos_url = f"{get_base_url()}/_apis/git/repositories?api-version={AZURE_DEVOPS_API_VERSION}"
+                resp = await client.get(repos_url, headers=headers)
+                resp.raise_for_status()
 
-                repos_response = await client.post(repos_url,headers=headers,json=body)
-                repos_response.raise_for_status()
-                repos = repos_response.json()
-                repo_id = repos["id"]                
+                existing = next((r for r in resp.json().get("value", []) if r["name"] == repository), None)
 
-                body = {
+                if existing:
+                    return f"❌ Error: El repositorio '{repository}' ya existe en el proyecto '{project}'."
+
+                # ===== 3. Crear el repositorio vacío =====
+                create_body = { "name": repository }
+
+                resp = await client.post(repos_url, headers=headers, json=create_body)
+                resp.raise_for_status()
+
+                repo_id = resp.json()["id"]
+
+                # ===== 4. Importar código desde la URL =====
+                import_body = {
                     "parameters": {
                         "deleteServiceEndpointAfterImport": True,
-                        "gitSource": [
-                            {
-                                "url": repository_url_import
-                            }
-                        ]
+                        "gitSource": { 
+                            "url": repository_url_import
+                        }
                     }
                 }
 
-                import_repos_url = f"{get_base_url()}/{project}/_apis/git/repositories/{repo_id}/importRequests?api-version={AZURE_DEVOPS_API_VERSION}"
-                import_repos_response = await client.post(import_repos_url,headers=headers,json=body)
-                import_repos_response.raise_for_status()
-                import_repos = import_repos_response.json()
-                repo_url = import_repos["repository"]["project"]["url"]
+                import_url = f"{get_base_url()}/_apis/git/repositories/{repo_id}/importRequests?api-version={AZURE_DEVOPS_API_VERSION}"
                 
-                # ===== Resultado exitoso =====
-                result = "✅ REPO CREADO E IMPORTADO EXITOSAMENTE\n"
-                result += "=" * 80 + "\n\n"
-                result += f"📦 Repositorio: {repository}\n"
-                result += f"📁 Proyecto: {project}\n"
-                result += f"🆔 Project ID: {project_id}\n"
-                result += f"🆔 Repo ID: {repo_id}\n"
-                result += f"🆔 URL Repo: {repo_url}\n"
-                
+                resp = await client.post(import_url, headers=headers, json=import_body)
+                resp.raise_for_status()
+
+                import_result = resp.json()
+                repo_url = import_result["repository"]["remoteUrl"]
+
+                # ===== 5. Éxito =====
+                result = (
+                    "✅ REPOSITORIO CREADO E IMPORTADO EXITOSAMENTE\n"
+                    + "=" * 80 + "\n\n"
+                    + f"📁 Proyecto: {project}\n"
+                    + f"📦 Repositorio: {repository}\n"
+                    + f"🆔 Project ID: {project_id}\n"
+                    + f"🆔 Repo ID: {repo_id}\n"
+                    + f"🔗 URL Remota: {repo_url}\n"
+                )
+
                 return result
-                
+
+        # ===== Manejo de Errores =====
         except httpx.HTTPStatusError as e:
-            if e.response.status_code == 404:
-                return f"❌ Error 404: Recurso no encontrado. Verifica los nombres del proyecto y repositorio."
-            elif e.response.status_code == 401:
-                return "❌ Error de autenticación. Verifica tu Personal Access Token (PAT)."
-            elif e.response.status_code == 403:
-                return f"❌ Error 403: No tienes permisos para asignar permisos en este repositorio."
-            else:
-                return f"❌ Error HTTP {e.response.status_code}: {e.response.text}"
+            code = e.response.status_code
+            msg = e.response.text
+
+            if code == 401:
+                return "❌ Error 401: Autenticación fallida. Verifica tu PAT."
+            if code == 403:
+                return "❌ Error 403: No tienes permisos para crear o importar repositorios."
+            if code == 404:
+                return "❌ Error 404: Recurso no encontrado. Revisa proyecto o URL de importación."
+
+            return f"❌ Error HTTP {code}: {msg}"
+
         except httpx.TimeoutException:
-            return "❌ Error: Tiempo de espera agotado al conectar con Azure DevOps."
+            return "❌ Error: Tiempo de espera agotado conectando a Azure DevOps."
+
         except Exception as e:
             return f"❌ Error inesperado: {str(e)}"

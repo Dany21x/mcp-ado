@@ -10,6 +10,7 @@ from azure_devops_config import (
 )
 
 def register_work_item_tools(mcp: FastMCP) -> None:
+    
     @mcp.tool()
     async def get_work_items(
             project: str,
@@ -95,88 +96,100 @@ def register_work_item_tools(mcp: FastMCP) -> None:
         priority: int
     ) -> str:
         """
-        Crear un Work Item de tipo Product Backlog Item Azure DevOps.
-        
+        Crear un Work Item en Azure DevOps.
+
         Args:
-            project: Nombre del proyecto en Azure DevOps
-            type: Tipo de Work Item (Product Backlog Item)
+            project: Nombre del proyecto
+            type: Tipo de Work Item (ej: "Product Backlog Item", "Task", "Bug")
             title: Título del Work Item
-            description: Descripción detallada del Work Item
+            description: Descripción del Work Item
             priority: Prioridad (1-4)
-        
+
         Returns:
             Mensaje indicando el resultado de la operación
         """
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
-             
+
                 headers = {
                     "Authorization": get_auth_header(),
-                    "Content-Type": "application/json"
+                    "Content-Type": "application/json-patch+json"
                 }
-                
+
+                # ===== Obtener Project ID =====
                 projects_url = f"{get_base_url()}/_apis/projects?api-version={AZURE_DEVOPS_API_VERSION}"
                 projects_response = await client.get(projects_url, headers=headers)
                 projects_response.raise_for_status()
                 projects = projects_response.json()
-                
+
                 project_id = next(
                     (p["id"] for p in projects.get("value", []) if p["name"] == project),
                     None
                 )
-                
+
                 if not project_id:
                     return f"❌ Error: No se encontró el proyecto '{project}'."
-                
+
+                # ===== Body del Work Item =====
                 body = [
                     {
                         "op": "add",
                         "path": "/fields/System.Title",
-                        "from": null,
+                        "from": None,
                         "value": title
                     },
                     {
                         "op": "add",
                         "path": "/fields/System.Description",
-                        "from": null,
+                        "from": None,
                         "value": description
                     },
                     {
-                       "op": "add",
+                        "op": "add",
                         "path": "/fields/Microsoft.VSTS.Common.Priority",
                         "value": priority
                     }
                 ]
 
-                # api-version=7.1
-                workitems_url = f"{get_base_url()}/_apis/projects?api-version={AZURE_DEVOPS_API_VERSION}"
-                workitems_response = await client.post(workitems_url,headers=headers,json=body)
-                workitems_response.raise_for_status()
-                workitems = workitems_response.json()
-                workitem_id = workitems["id"]
-                workitems_url = workitems["url"]
-                
-                # ===== Resultado exitoso =====
+                work_item_url = (
+                    f"{get_base_url()}/_apis/wit/workitems/${type}"
+                    f"?api-version=7.1-preview.3"
+                )
+
+                workitem_response = await client.post(
+                    work_item_url,
+                    headers=headers,
+                    json=body
+                )
+                workitem_response.raise_for_status()
+                workitem = workitem_response.json()
+
+                workitem_id = workitem.get("id")
+                workitem_url = workitem.get("url")
+
+                # ===== Resultado =====
                 result = "✅ WORK ITEM CREADO EXITOSAMENTE\n"
                 result += "=" * 80 + "\n\n"
-                result += f"📦 Repositorio: {repository}\n"
                 result += f"📁 Proyecto: {project}\n"
+                result += f"📝 Tipo: {type}\n"
                 result += f"🆔 Project ID: {project_id}\n"
-                result += f"🆔 Work Item  ID: {workitem_id}\n"
-                result += f"🆔 URL Work Item: {workitems_url}\n"
-                
+                result += f"🆔 Work Item ID: {workitem_id}\n"
+                result += f"🔗 URL Work Item: {workitem_url}\n"
+
                 return result
-                
+
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 404:
-                return f"❌ Error 404: Recurso no encontrado. Verifica los nombres del proyecto y repositorio."
+                return f"❌ Error 404: No se encontró el recurso o el tipo de Work Item '{type}'."
             elif e.response.status_code == 401:
-                return "❌ Error de autenticación. Verifica tu Personal Access Token (PAT)."
+                return "❌ Error 401: No autorizado. Revisa tu PAT."
             elif e.response.status_code == 403:
-                return f"❌ Error 403: No tienes permisos para asignar permisos en este repositorio."
+                return "❌ Error 403: No tienes permisos para crear Work Items."
             else:
                 return f"❌ Error HTTP {e.response.status_code}: {e.response.text}"
+
         except httpx.TimeoutException:
             return "❌ Error: Tiempo de espera agotado al conectar con Azure DevOps."
+
         except Exception as e:
             return f"❌ Error inesperado: {str(e)}"
