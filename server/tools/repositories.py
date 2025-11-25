@@ -379,7 +379,7 @@ def register_repository_tools(mcp: FastMCP) -> None:
             return f"❌ Error inesperado: {str(e)}"
 
     @mcp.tool()
-    async def create_and_import_repo(
+    async def create_and_import(
         project: str,
         repository: str,
         repository_url_import: str
