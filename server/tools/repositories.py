@@ -392,8 +392,12 @@ def register_repository_tools(mcp: FastMCP) -> None:
                 resp = await client.get(projects_url, headers=headers)
                 resp.raise_for_status()
 
+                print(f'resp: {resp}')
+
                 projects = resp.json().get("value", [])
                 project_id = next((p["id"] for p in projects if p["name"] == project), None)
+
+                print(f'project_id: {project_id}')
 
                 if not project_id:
                     return f"❌ Error: Proyecto '{project}' no encontrado."
@@ -403,6 +407,8 @@ def register_repository_tools(mcp: FastMCP) -> None:
                 resp = await client.get(repos_url, headers=headers)
                 resp.raise_for_status()
 
+                
+
                 existing = next((r for r in resp.json().get("value", []) if r["name"] == repository), None)
 
                 if existing:
@@ -411,10 +417,19 @@ def register_repository_tools(mcp: FastMCP) -> None:
                 # ===== 3. Crear el repositorio vacío =====
                 create_body = { "name": repository }
 
+                print(f'create_body: {create_body}')
+
+                print(f'post: {repos_url, headers, create_body}')
+
                 resp = await client.post(repos_url, headers=headers, json=create_body)
                 resp.raise_for_status()
 
+                print(f'resp2: {resp}')
+
                 repo_id = resp.json()["id"]
+
+                print(f'repo_id: {repo_id}')
+
 
                 # ===== 4. Importar código desde la URL =====
                 import_body = {
@@ -428,6 +443,8 @@ def register_repository_tools(mcp: FastMCP) -> None:
 
                 import_url = f"{get_base_url()}/_apis/git/repositories/{repo_id}/importRequests?api-version={AZURE_DEVOPS_API_VERSION}"
                 
+                print(f'import_url: {import_url}')
+
                 resp = await client.post(import_url, headers=headers, json=import_body)
                 resp.raise_for_status()
 
