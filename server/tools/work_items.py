@@ -152,8 +152,8 @@ def register_work_item_tools(mcp: FastMCP) -> None:
                 ]
 
                 work_item_url = (
-                    f"{get_base_url()}/_apis/wit/workitems/${type}"
-                    f"?api-version=7.1-preview.3"
+                    f"{get_base_url()}/{project}/_apis/wit/workitems/${type}"
+                    f"?api-version=7.1"
                 )
 
                 workitem_response = await client.post(

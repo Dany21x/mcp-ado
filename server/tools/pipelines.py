@@ -50,7 +50,7 @@ async def create_and_run_pipeline(
                 return {"error": f"No se encontró el repositorio '{repository}'"}
 
             # ===== Crear pipeline =====
-            create_url = f"{get_base_url()}/_apis/pipelines?api-version={AZURE_DEVOPS_API_VERSION}"
+            create_url = f"{get_base_url()}/{project}/_apis/pipelines?api-version={AZURE_DEVOPS_API_VERSION}"
             create_body = {
                 "name": pipeline_name,
                 "configuration": {
@@ -64,7 +64,7 @@ async def create_and_run_pipeline(
             pipeline_id = res.json().get("id")
 
             # ===== Ejecutar pipeline =====
-            run_url = f"{get_base_url()}/_apis/pipelines/{pipeline_id}/runs?api-version={AZURE_DEVOPS_API_VERSION}"
+            run_url = f"{get_base_url()}/{project}/_apis/pipelines/{pipeline_id}/runs?api-version={AZURE_DEVOPS_API_VERSION}"
             run_body = {
                 "resources": {
                     "repositories": {
@@ -101,7 +101,7 @@ async def get_pipeline_run_status(
         headers = {"Authorization": get_auth_header()}
         async with httpx.AsyncClient() as client:
 
-            url = f"{get_base_url()}/_apis/pipelines/{pipeline_id}/runs/{run_id}?api-version={AZURE_DEVOPS_API_VERSION}"
+            url = f"{get_base_url()}/{project}/_apis/pipelines/{pipeline_id}/runs/{run_id}?api-version={AZURE_DEVOPS_API_VERSION}"
             res = await client.get(url, headers=headers)
             res.raise_for_status()
 
@@ -136,7 +136,7 @@ async def get_pipeline_run_report(
 
         async with httpx.AsyncClient() as client:
 
-            url = f"{get_base_url()}/_apis/pipelines/{pipeline_id}/runs/{run_id}?api-version={AZURE_DEVOPS_API_VERSION}"
+            url = f"{get_base_url()}/{project}/_apis/pipelines/{pipeline_id}/runs/{run_id}?api-version={AZURE_DEVOPS_API_VERSION}"
             res = await client.get(url, headers=headers)
             res.raise_for_status()
 
