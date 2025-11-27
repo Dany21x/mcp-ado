@@ -411,7 +411,8 @@ def register_repository_tools(mcp: FastMCP) -> None:
                 # ===== 3. Crear el repositorio vacío =====
                 create_body = { "name": repository }
 
-                resp = await client.post(repos_url, headers=headers, json=create_body)
+                create_url = f"{get_base_url()}/{project}/_apis/git/repositories?api-version={AZURE_DEVOPS_API_VERSION}"
+                resp = await client.post(create_url, headers=headers, json=create_body)
                 resp.raise_for_status()
 
                 repo_id = resp.json()["id"]
@@ -426,7 +427,7 @@ def register_repository_tools(mcp: FastMCP) -> None:
                     }
                 }
 
-                import_url = f"{get_base_url()}/_apis/git/repositories/{repo_id}/importRequests?api-version={AZURE_DEVOPS_API_VERSION}"
+                import_url = f"{get_base_url()}/{project}/_apis/git/repositories/{repo_id}/importRequests?api-version={AZURE_DEVOPS_API_VERSION}"
                 
                 resp = await client.post(import_url, headers=headers, json=import_body)
                 resp.raise_for_status()
