@@ -273,7 +273,7 @@ def register_repository_tools(mcp: FastMCP) -> None:
                     return f"❌ Error: No se encontró el repositorio '{repository}'."
 
                 # ===== Obtener ID del tipo de política =====
-                policy_types_url = f"{get_base_url()}/_apis/policy/types?api-version={AZURE_DEVOPS_API_VERSION}"
+                policy_types_url = f"{get_base_url()}/{project}/_apis/policy/types?api-version={AZURE_DEVOPS_API_VERSION}"
                 policy_types = (await client.get(policy_types_url, headers=headers)).json()["value"]
 
                 reviewer_policy_type_id = next(
@@ -286,7 +286,7 @@ def register_repository_tools(mcp: FastMCP) -> None:
 
                 # ===== Obtener políticas existentes =====
                 policies_url = (
-                    f"{get_base_url()}/_apis/policy/configurations?"
+                    f"{get_base_url()}/{project}/_apis/policy/configurations?"
                     f"api-version={AZURE_DEVOPS_API_VERSION}&repositoryId={repo_id}&refName=refs/heads/{branch}"
                 )
                 policies_response = await client.get(policies_url, headers=headers)
@@ -321,14 +321,14 @@ def register_repository_tools(mcp: FastMCP) -> None:
 
                 if existing_policy_id:
                     upsert_url = (
-                        f"{get_base_url()}/_apis/policy/configurations/"
+                        f"{get_base_url()}/{project}/_apis/policy/configurations/"
                         f"{existing_policy_id}?api-version={AZURE_DEVOPS_API_VERSION}"
                     )
                     upsert_response = await client.put(upsert_url, headers=headers, json=body)
 
                 else:
                     upsert_url = (
-                        f"{get_base_url()}/_apis/policy/configurations"
+                        f"{get_base_url()}/{project}/_apis/policy/configurations"
                         f"?api-version={AZURE_DEVOPS_API_VERSION}"
                     )
                     upsert_response = await client.post(upsert_url, headers=headers, json=body)
