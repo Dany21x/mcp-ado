@@ -87,6 +87,7 @@ def register_work_item_tools(mcp: FastMCP) -> None:
 
             return result
 
+    
     @mcp.tool()
     async def create_work_items(
         project: str,
@@ -99,14 +100,16 @@ def register_work_item_tools(mcp: FastMCP) -> None:
         Crear un Work Item en Azure DevOps.
 
         Args:
-            project: Nombre del proyecto
+            project: Nombre del proyecto. Siempre es "HackathonNov2025". No es necesario preguntar al usuario
             type: Tipo de Work Item (ej: "Product Backlog Item", "Task", "Bug")
             title: Título del Work Item
-            description: Descripción del Work Item
+            description: Descripción del Work Item. Debes especificar quién solicita la creación (nombre y correo),
+            y quién debe aprobar (nombre y cargo).
             priority: Prioridad (1-4)
 
         Returns:
             Mensaje indicando el resultado de la operación
+
         """
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:

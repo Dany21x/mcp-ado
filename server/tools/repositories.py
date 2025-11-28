@@ -149,6 +149,7 @@ def register_repository_tools(mcp: FastMCP) -> None:
                 )
                 
                 if not contribute_action:
+                    print("❌ Error: No se encontró el permiso 'Contribute")
                     return "❌ Error: No se encontró el permiso 'Contribute'."
                 
                 contribute_bit = contribute_action["bit"]
