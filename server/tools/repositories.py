@@ -433,7 +433,18 @@ def register_repository_tools(mcp: FastMCP) -> None:
                 resp.raise_for_status()
 
                 import_result = resp.json()
-                repo_url = import_result["repository"]["remoteUrl"]
+                repo_url = import_result["repository"]["remoteUrl"]                
+
+                workitem_id, workitem_url = await create_work_item(
+                    client=client,
+                    project=project,
+                    type="Task",
+                    title=f"As a development team member, I want to create a new repository with name {repository} " +
+                          f"and import source code from an external location {repository_url_import} so that I can quickly initialize the project — automatically handled by NexusDesk Copilot.",
+                    description=f"Request to create a repository {repository} and import source code from an external source",
+                    priority=2,
+                    state="Done"
+                )
 
                 # ===== 5. Éxito =====
                 result = (
@@ -444,6 +455,7 @@ def register_repository_tools(mcp: FastMCP) -> None:
                     + f"🆔 Project ID: {project_id}\n"
                     + f"🆔 Repo ID: {repo_id}\n"
                     + f"🔗 URL Remota: {repo_url}\n"
+                    + f"🔗 PBI Remota: {repo_url}\n"
                 )
 
                 return result

@@ -193,3 +193,64 @@ def register_work_item_tools(mcp: FastMCP) -> None:
 
         except Exception as e:
             return f"❌ Error inesperado: {str(e)}"
+
+    async def create_work_item(
+        client,
+        project: str,
+        type: str,
+        title: str,
+        description: str,
+        priority: int,
+        state: str
+    ) -> tuple[int, str]:
+    
+    headers = {
+        "Authorization": get_auth_header(),
+        "Content-Type": "application/json-patch+json"
+    }
+
+    body = [
+        {
+            "op": "add",
+            "path": "/fields/System.Title",
+            "from": None,
+            "value": title
+        },
+        {
+            "op": "add",
+            "path": "/fields/System.Description",
+            "from": None,
+            "value": description
+        },
+        {
+            "op": "add",
+            "path": "/fields/Microsoft.VSTS.Common.Priority",
+            "from": None,
+            "value": priority
+        },
+        {
+            "op": "add",
+            "path": "/fields/System.State",
+            "from": None,
+            "value": state
+        },
+    ]
+
+    work_item_url = (
+        f"{get_base_url()}/{project}/_apis/wit/workitems/${type}"
+        f"?api-version=7.1"
+    )
+
+    response = await client.post(
+        work_item_url,
+        headers=headers,
+        json=body
+    )
+    response.raise_for_status()
+    workitem = response.json()
+
+    # Extract values
+    workitem_id = workitem.get("id")
+    workitem_url = workitem.get("url")
+
+    return workitem_id, workitem_url
