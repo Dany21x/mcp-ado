@@ -5,9 +5,6 @@ from fastmcp import FastMCP
 
 mcp = FastMCP()
 
-# -------------------------------------------------------------------
-# 1. Crear y ejecutar el pipeline
-# -------------------------------------------------------------------
 @mcp.tool()
 async def create_and_run_pipeline(
     project: str,
@@ -85,72 +82,89 @@ async def create_and_run_pipeline(
     except Exception as ex:
         return {"error": str(ex)}
 
-
-# -------------------------------------------------------------------
-# 2. Consultar estado del run
-# -------------------------------------------------------------------
-@mcp.tool()
-async def get_pipeline_run_status(
-    pipeline_id: int,
-    run_id: int
-) -> dict:
-    """
-    Obtiene el estado actual del run (en ejecución, completado, fallado, etc.)
-    """
-    try:
-        headers = {"Authorization": get_auth_header()}
-        async with httpx.AsyncClient() as client:
-
-            url = f"{get_base_url()}/{project}/_apis/pipelines/{pipeline_id}/runs/{run_id}?api-version={AZURE_DEVOPS_API_VERSION}"
-            res = await client.get(url, headers=headers)
-            res.raise_for_status()
-
-            data = res.json()
-
-            return {
-                "state": data.get("state"),
-                "result": data.get("result"),
-                "createdDate": data.get("createdDate"),
-                "finishedDate": data.get("finishedDate"),
-                "raw": data
-            }
-
-    except Exception as ex:
-        return {"error": str(ex)}
-
-
-# -------------------------------------------------------------------
-# 3. Obtener reporte completo del pipeline (más demorado)
-# -------------------------------------------------------------------
 @mcp.tool()
 async def get_pipeline_run_report(
-    pipeline_id: int,
-    run_id: int
+    project: str
 ) -> str:
     """
-    Devuelve el reporte completo del pipeline, con resumen, fechas y resultados.
-    Este método puede tardar más.
+    Retrieves the latest pipeline run for a given project,
+    dynamically resolving project_id, pipeline_id and run_id.
+    Returns a full formatted report.
     """
     try:
         headers = {"Authorization": get_auth_header()}
 
         async with httpx.AsyncClient() as client:
 
-            url = f"{get_base_url()}/{project}/_apis/pipelines/{pipeline_id}/runs/{run_id}?api-version={AZURE_DEVOPS_API_VERSION}"
-            res = await client.get(url, headers=headers)
+            # ============================================================
+            # 1. Resolve project_id from project name
+            # ============================================================
+            projects_url = f"{get_base_url()}/_apis/projects?api-version={AZURE_DEVOPS_API_VERSION}"
+            res = await client.get(projects_url, headers=headers)
             res.raise_for_status()
 
+            project_id = next(
+                (p["id"] for p in res.json().get("value", []) if p["name"].lower() == project.lower()),
+                None
+            )
+
+            if not project_id:
+                return f"❌ Project '{project}' not found."
+
+            # ============================================================
+            # 2. Get all pipelines for this project
+            # ============================================================
+            pipelines_url = f"{get_base_url()}/{project}/_apis/pipelines?api-version={AZURE_DEVOPS_API_VERSION}"
+            res = await client.get(pipelines_url, headers=headers)
+            res.raise_for_status()
+
+            pipelines = res.json().get("value", [])
+            if not pipelines:
+                return f"❌ No pipelines found in project '{project}'."
+
+            # Select the first pipeline (or adjust selection logic)
+            pipeline = pipelines[0]
+            pipeline_id = pipeline["id"]
+
+            # ============================================================
+            # 3. Get the latest run for the selected pipeline
+            # ============================================================
+            runs_url = f"{get_base_url()}/{project}/_apis/pipelines/{pipeline_id}/runs?api-version={AZURE_DEVOPS_API_VERSION}"
+            res = await client.get(runs_url, headers=headers)
+            res.raise_for_status()
+
+            runs = res.json().get("value", [])
+            if not runs:
+                return f"❌ No runs found for pipeline {pipeline_id} in project '{project}'."
+
+            latest_run = runs[0]  # Always the latest execution
+            run_id = latest_run["id"]
+
+            # ============================================================
+            # 4. Fetch full run details
+            # ============================================================
+            run_detail_url = (
+                f"{get_base_url()}/{project}/_apis/pipelines/{pipeline_id}/runs/{run_id}"
+                f"?api-version={AZURE_DEVOPS_API_VERSION}"
+            )
+
+            res = await client.get(run_detail_url, headers=headers)
+            res.raise_for_status()
             run_info = res.json()
 
+            # Helper
             def safe(key):
                 return run_info.get(key, "N/A")
 
-            # === Formato del reporte ===
+            # ============================================================
+            # 5. Build formatted report
+            # ============================================================
             report = []
             report.append("✅ PIPELINE RUN REPORT")
             report.append("=" * 80)
             report.append("")
-            report.append(f"Pipeline ID: {pipeline_id}")
+            report.append(f"Project: {project}")
+            report.append(f"Pipeline: {pipeline.get('name', 'N/A')} (ID: {pipeline_id})")
             report.append(f"Run ID: {run_id}")
             report.append(f"State: {safe('state')}")
             report.append(f"Result: {safe('result')}")
@@ -164,4 +178,4 @@ async def get_pipeline_run_report(
             return "\n".join(report)
 
     except Exception as ex:
-        return f"❌ Error obteniendo reporte: {str(ex)}"
+        return f"❌ Error obtaining pipeline run report: {str(ex)}"
