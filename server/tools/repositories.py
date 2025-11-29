@@ -249,6 +249,9 @@ def register_repository_tools(mcp: FastMCP) -> None:
                     "Content-Type": "application/json"
                 }
 
+                print('==========assign reviewers')
+                print(f'branch: {branch}')
+
                 # ===== Obtener Project ID =====
                 projects_url = f"{get_base_url()}/_apis/projects?api-version={AZURE_DEVOPS_API_VERSION}"
                 projects_response = await client.get(projects_url, headers=headers)
@@ -320,6 +323,8 @@ def register_repository_tools(mcp: FastMCP) -> None:
                     }
                 }
 
+                print(f'body: {body}')
+
                 if existing_policy_id:
                     upsert_url = (
                         f"{get_base_url()}/{project}/_apis/policy/configurations/"
@@ -344,6 +349,8 @@ def register_repository_tools(mcp: FastMCP) -> None:
                 result += f"🔐 Política: Minimum number of reviewers\n"
                 result += f"🆔 Project ID: {project_id}\n"
                 result += f"🆔 Repo ID: {repo_id}\n"
+
+                print(result)
 
                 return result
 
@@ -448,7 +455,7 @@ def register_repository_tools(mcp: FastMCP) -> None:
 
                 import_result = resp.json()
                 repo_url = import_result["repository"]["remoteUrl"]                
-
+                '''
                 workitem_id, workitem_url = await create_work_item(
                     client=client,
                     project=project,
@@ -459,6 +466,7 @@ def register_repository_tools(mcp: FastMCP) -> None:
                     priority=2,
                     state="Done"
                 )
+                '''
 
                 # ===== 5. Éxito =====
                 result = (
